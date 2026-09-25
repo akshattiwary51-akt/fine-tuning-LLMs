@@ -1,0 +1,66 @@
+[tool.poetry]
+name = "fine-tuning-llms"
+version = "0.1.0"
+description = "Fine-Tuning Large Language Models"
+authors = ["Konstantinos Dalageorgos <kon.dalageorgos@gmail.com>"]
+readme = "README.md"
+package-mode = false
+
+[[tool.poetry.source]]
+name = "torch_cu124"
+url = "https://download.pytorch.org/whl/cu124"
+priority = "supplemental"
+
+[tool.poetry.dependencies]
+python = "==3.11.*"
+python-dotenv = ">=1.0.0"
+pandas = ">=2.2.0"
+datasets = ">=3.0.0"
+accelerate = ">=1.0.0"
+bitsandbytes = ">=0.44.0"
+setuptools = ">=70.0.0"
+
+# Force Torch to use the CUDA 12.4 source
+torch = {version = "==2.6.0", source = "torch_cu124"}
+torchvision = {version = "==0.21.0", source = "torch_cu124"}
+torchaudio = {version = "==2.6.0", source = "torch_cu124"}
+
+# Install xformers compatible with PyTorch 2.6.0 + CUDA 12.4
+xformers = ">=0.0.28,<0.0.30"
+
+# Unsloth packages: pinned to a specific commit rather than `branch = "main"`.
+# Unsloth doesn't tag stable PyPI-equivalent releases in its git repo, so
+# pinning to a known-good commit (the one this repo was last tested against)
+# is the most reproducible option available. Bump deliberately, not via
+# `poetry update`, and re-run the test suite + a training smoke test after.
+unsloth = {git = "https://github.com/unslothai/unsloth.git", rev = "fb9ea50c30e4b3f0f4819c767c204444858b272c"}
+unsloth-zoo = {git = "https://github.com/unslothai/unsloth-zoo.git", rev = "e1d6791803ec67acc8f1c61a6c7ca665bdb0cefc"}
+
+# Versions compatible with Unsloth
+transformers = ">=4.46.0"
+peft = ">=0.13.0"
+trl = ">=0.11.0"
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.0"
+pytest = "^8.3.0"
+pytest-cov = "^5.0.0"
+ruff = "^0.7.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+exclude = ["sft_output", "models", "unsloth_compiled_cache"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "gpu: tests that require a CUDA GPU and real model weights (skipped in normal CI)",
+]

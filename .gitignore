@@ -1,0 +1,25 @@
+# Directories to ignore
+models/
+sft_output/
+unsloth_compiled_cache/
+__pycache__/
+.venv/
+
+# Environment files
+.env
+
+# Model and checkpoint files
+*.safetensors
+*.pt
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Jupyter Notebooks
+*.ipynb
+
+# Test / lint tooling caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/

@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, tst, prd]
+  pull_request:
+    branches: [dev, tst, prd]
+  workflow_call: {}  # allows deploy_tst.yml to call this as a reusable workflow (gate)
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Deliberately NOT a full `poetry install`: that pulls the CUDA 12.4
+      # torch build + Unsloth (git dependency), which need a GPU runner and
+      # are far too heavy for a plain CI check. The unit test suite only
+      # exercises config/data/prompt/metrics logic (see tests/), so only
+      # those dependencies are installed here. GPU-dependent code (model
+      # loading, training, generation) is intentionally NOT run in this
+      # workflow — see README "Testing" section for how that's verified.
+      - name: Install CPU-only test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas python-dotenv "datasets>=3.0.0" transformers peft pytest pytest-cov ruff
+
+      - name: Lint
+        run: ruff check app/ tests/
+
+      - name: Run unit tests
+        run: pytest tests/ -v --cov=app --cov-report=term-missing
