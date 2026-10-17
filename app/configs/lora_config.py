@@ -13,14 +13,19 @@ never passed target_modules at all, meaning LoRA/QLoRA behaved differently
 depending on which backend was active. `get_lora_spec()` is the single source of
 truth both branches now read from, so that no longer happens.
 """
+
 from dataclasses import dataclass
 
 from peft import LoraConfig
 
 TARGET_MODULES = [
-    "q_proj", "k_proj", "v_proj",         # Attention projections: query, key, value
-    "o_proj",                             # Attention output projection
-    "gate_proj", "up_proj", "down_proj",  # MLP gating + up / down projections
+    "q_proj",
+    "k_proj",
+    "v_proj",  # Attention projections: query, key, value
+    "o_proj",  # Attention output projection
+    "gate_proj",
+    "up_proj",
+    "down_proj",  # MLP gating + up / down projections
 ]
 
 
@@ -35,16 +40,16 @@ class LoraSpec:
 
 
 LORA_SPEC = LoraSpec(
-    r=8,               # Rank: size of the low-rank matrices (↑ r ⇒ ↑ capacity & VRAM usage)
-    lora_alpha=16,      # Scaling factor for LoRA updates (often >= r; controls update magnitude)
+    r=8,  # Rank: size of the low-rank matrices (↑ r ⇒ ↑ capacity & VRAM usage)
+    lora_alpha=16,  # Scaling factor for LoRA updates (often >= r; controls update magnitude)
     lora_dropout=0.05,  # Dropout on LoRA layers
     target_modules=TARGET_MODULES,
 )
 
 QLORA_SPEC = LoraSpec(
-    r=64,                # LoRA rank — higher is normal in QLoRA (32-128 typical)
-    lora_alpha=128,      # Scaling factor (2x r)
-    lora_dropout=0.1,    # Dropout improves generalization for QLoRA
+    r=64,  # LoRA rank — higher is normal in QLoRA (32-128 typical)
+    lora_alpha=128,  # Scaling factor (2x r)
+    lora_dropout=0.1,  # Dropout improves generalization for QLoRA
     target_modules=TARGET_MODULES,
 )
 

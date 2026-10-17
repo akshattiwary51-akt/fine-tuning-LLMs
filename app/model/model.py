@@ -33,6 +33,7 @@ switching `use_unsloth` on/off no longer silently changes what LoRA/QLoRA mean
 `target_modules`, so it did not train the same set of parameters as the
 standard path).
 """
+
 from __future__ import annotations
 
 import logging
@@ -43,8 +44,33 @@ from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 
 from app.configs.lora_config import get_lora_spec, to_peft_config
 from app.configs.settings import Settings
+from app.utils.environment import supports_bf16
 
 logger = logging.getLogger(__name__)
+
+
+def count_trainable_parameters(model) -> dict:
+    """Returns trainable/total parameter counts and the trainable percentage.
+
+    Phase 11 (resource-efficient fine-tuning) asks this project to expose real
+    numbers rather than just claim efficiency; this is what `run_metadata.json`
+    reports it from (see app/train.py). Uses peft's own accounting
+    (`get_nb_trainable_parameters`) when available, since it correctly handles
+    quantized/frozen base-model parameters; falls back to a manual count over
+    `model.parameters()` for any other model type.
+    """
+    if hasattr(model, "get_nb_trainable_parameters"):
+        trainable_params, total_params = model.get_nb_trainable_parameters()
+    else:
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        total_params = sum(p.numel() for p in model.parameters())
+
+    trainable_pct = 100 * trainable_params / total_params if total_params else 0.0
+    return {
+        "trainable_params": trainable_params,
+        "total_params": total_params,
+        "trainable_pct": round(trainable_pct, 4),
+    }
 
 
 def load_model(settings: Settings, inference: bool = False):
@@ -66,7 +92,11 @@ def load_model(settings: Settings, inference: bool = False):
 
 
 def _load_unsloth(settings: Settings, model_id: str, lora_spec, inference: bool):
-    import unsloth  # noqa: F401  (import side-effects patch transformers/peft)
+    # By this point `unsloth` has already been imported at the top of the
+    # calling entrypoint (app/train.py / app/inference.py), before
+    # transformers/peft/trl — this repeated import is just for local
+    # readability in this function and is a no-op (Python caches modules).
+    import unsloth  # noqa: F401
     from unsloth import FastLanguageModel
 
     logger.info("[Unsloth] Loading base model '%s' (inference=%s)...", model_id, inference)
@@ -89,12 +119,12 @@ def _load_unsloth(settings: Settings, model_id: str, lora_spec, inference: bool)
         model,
         r=lora_spec.r,
         lora_alpha=lora_spec.lora_alpha,
-        lora_dropout=lora_spec.lora_dropout,       # bug fix: was hardcoded to 0
-        target_modules=lora_spec.target_modules,   # bug fix: was never passed at all
-        finetune_vision_layers=False,     # Keep vision part frozen
-        finetune_language_layers=True,    # Train the language part
+        lora_dropout=lora_spec.lora_dropout,  # bug fix: was hardcoded to 0
+        target_modules=lora_spec.target_modules,  # bug fix: was never passed at all
+        finetune_vision_layers=False,  # Keep vision part frozen
+        finetune_language_layers=True,  # Train the language part
         finetune_attention_modules=True,  # Train attention
-        finetune_mlp_modules=True,        # Train MLPs
+        finetune_mlp_modules=True,  # Train MLPs
         bias=lora_spec.bias,
         use_gradient_checkpointing="unsloth",
         random_state=3407,
@@ -107,14 +137,16 @@ def _load_unsloth(settings: Settings, model_id: str, lora_spec, inference: bool)
 
 def _load_standard(settings: Settings, model_id: str, lora_spec, inference: bool):
     if settings.lora_mode == "qlora":
+        # Compute dtype matches the actual training precision (see app/train.py,
+        # which picks bf16 vs fp16 the same way via supports_bf16()) rather than
+        # being hardcoded — bf16 needs Ampere+ GPUs; older GPUs (e.g. Colab's
+        # free-tier T4) only support fp16, and a mismatch here would be silently
+        # inconsistent even where it doesn't outright fail.
+        compute_dtype = torch.bfloat16 if supports_bf16() else torch.float16
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
-            # Compute dtype now matches the training precision (bf16, set in
-            # SFTConfig) rather than the previous hardcoded float16, avoiding a
-            # dtype mismatch between quantized-weight compute and the rest of
-            # the training loop.
-            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_compute_dtype=compute_dtype,
             bnb_4bit_use_double_quant=True,
         )
     else:

@@ -12,6 +12,7 @@ Implemented with the standard library only — no new dependency (e.g. scikit-
 learn) was added since this dataset has a small, fixed label set and the
 formulas are simple to implement directly.
 """
+
 from __future__ import annotations
 
 import json
@@ -77,9 +78,7 @@ def compute_metrics(y_true: list[str], y_pred: list[str], split: str = "test") -
     precision) or silently dropped (which would distort recall/support).
     """
     if len(y_true) != len(y_pred):
-        raise ValueError(
-            f"y_true and y_pred must be the same length, got {len(y_true)} vs {len(y_pred)}"
-        )
+        raise ValueError(f"y_true and y_pred must be the same length, got {len(y_true)} vs {len(y_pred)}")
 
     labels = list(VALID_LABELS)
     n = len(y_true)
@@ -123,8 +122,7 @@ def compute_metrics(y_true: list[str], y_pred: list[str], split: str = "test") -
 
     total_support = sum(m["support"] for m in per_class.values())
     weighted_f1 = (
-        sum(m["f1"] * m["support"] for m in per_class.values()) / total_support
-        if total_support else 0.0
+        sum(m["f1"] * m["support"] for m in per_class.values()) / total_support if total_support else 0.0
     )
 
     return EvaluationResult(

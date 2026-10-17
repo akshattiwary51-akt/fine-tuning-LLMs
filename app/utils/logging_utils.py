@@ -1,4 +1,5 @@
 """Structured logging setup, replacing ad-hoc `print()` calls across the pipeline."""
+
 from __future__ import annotations
 
 import logging

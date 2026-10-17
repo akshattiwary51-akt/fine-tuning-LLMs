@@ -15,6 +15,7 @@ Design notes:
   used, so switching backends never silently overwrites a previous run's
   output (this was a real bug in the original single hardcoded ADAPTER_DIR).
 """
+
 from __future__ import annotations
 
 import os
@@ -35,10 +36,30 @@ def _env_bool(name: str, default: bool) -> bool:
     return val.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _get_hf_token_from_env_or_colab() -> str | None:
+    """Resolves HF_TOKEN from, in order: the environment (.env / shell), then
+    Google Colab's secret manager if running in Colab and the env var isn't set.
+
+    Colab's `userdata` secrets (set via the key icon in the left sidebar) are
+    the recommended way to store tokens in a notebook — safer than writing a
+    plaintext .env into ephemeral notebook storage. This is a no-op outside
+    Colab (the import simply fails and is caught).
+    """
+    token = os.getenv("HF_TOKEN")
+    if token:
+        return token
+    try:
+        from google.colab import userdata  # type: ignore
+
+        return userdata.get("HF_TOKEN")
+    except Exception:
+        return None
+
+
 @dataclass
 class Settings:
     # --- Secrets (never defaulted, only validated on use) -------------
-    hf_token: str | None = field(default_factory=lambda: os.getenv("HF_TOKEN"))
+    hf_token: str | None = field(default_factory=_get_hf_token_from_env_or_colab)
 
     # --- Model selection ------------------------------------------------
     use_unsloth: bool = field(default_factory=lambda: _env_bool("USE_UNSLOTH", True))
@@ -63,15 +84,11 @@ class Settings:
 
     # --- Hugging Face Hub upload target -----------------------------------
     hf_username: str | None = field(default_factory=lambda: os.getenv("HF_USERNAME"))
-    hf_personal_repo_id_override: str | None = field(
-        default_factory=lambda: os.getenv("HF_PERSONAL_REPO_ID")
-    )
+    hf_personal_repo_id_override: str | None = field(default_factory=lambda: os.getenv("HF_PERSONAL_REPO_ID"))
 
     def __post_init__(self) -> None:
         if self.lora_mode not in VALID_LORA_MODES:
-            raise ValueError(
-                f"Invalid LORA_MODE '{self.lora_mode}'. Must be one of {VALID_LORA_MODES}."
-            )
+            raise ValueError(f"Invalid LORA_MODE '{self.lora_mode}'. Must be one of {VALID_LORA_MODES}.")
         if not 0.0 < self.test_size < 1.0:
             raise ValueError(f"TEST_SIZE must be strictly between 0 and 1, got {self.test_size}.")
         if self.max_seq_length <= 0:

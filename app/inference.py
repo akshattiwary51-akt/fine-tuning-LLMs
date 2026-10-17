@@ -13,7 +13,13 @@ Run with:
     poetry run python -m app.inference --mode eval --num-samples 50
     poetry run python -m app.inference --mode chat
 """
+
 from __future__ import annotations
+
+# Unsloth must be imported before transformers/peft/trl for its optimizations
+# to patch cleanly — see the matching comment in app/train.py for why this
+# has to happen here rather than inside app/model/model.py's Unsloth branch.
+import unsloth  # noqa: F401,E402
 
 import argparse
 import logging
@@ -27,6 +33,7 @@ from app.data.prompts import build_generation_prompt, normalize_label
 from app.evaluation.metrics import compute_metrics
 from app.model.model import load_model
 from app.model.tokenizer import load_tokenizer
+from app.utils.environment import log_environment_summary, require_cuda
 from app.utils.logging_utils import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -51,7 +58,9 @@ def generate_response(model, tokenizer, input_text: str, use_streamer: bool = Fa
         outputs = model.generate(
             **inputs,
             max_new_tokens=64,  # a label is a few tokens; 2048 was excessive and slowed inference
-            temperature=1.0, top_p=0.95, top_k=64,  # recommended Gemma-3 generation settings
+            temperature=1.0,
+            top_p=0.95,
+            top_k=64,  # recommended Gemma-3 generation settings
             streamer=streamer,
         )
 
@@ -144,6 +153,9 @@ if __name__ == "__main__":
         overrides["lora_mode"] = args.lora_mode
 
     settings = get_settings(**overrides)
+
+    require_cuda()  # fail fast with an actionable message rather than a deep bitsandbytes crash
+    log_environment_summary()
 
     model = load_model(settings, inference=True)
     tokenizer = load_tokenizer(settings.model_id, inference=True)

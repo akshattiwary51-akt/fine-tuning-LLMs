@@ -1,0 +1,30 @@
+# Requirements for running this project in a hosted notebook (Google Colab,
+# Kaggle Notebooks) instead of via Poetry locally. See docs/COLAB.md.
+#
+# Deliberately does NOT include torch/torchvision/torchaudio: Colab and Kaggle
+# both preinstall a PyTorch build already matched to their GPU driver/CUDA
+# version. Reinstalling a different torch build (e.g. pyproject.toml's pinned
+# cu124 wheel) risks breaking that match and is unnecessary — the preinstalled
+# torch is what you want. If `import torch; torch.cuda.is_available()` prints
+# False after installing this file, the fix is enabling a GPU runtime, not
+# reinstalling torch (see docs/COLAB.md step 1).
+#
+# Versions are intentionally loose (matching pyproject.toml's own ranges)
+# rather than exact-pinned, since notebook environments change frequently and
+# exact pins here would go stale fast; pyproject.toml + poetry.lock remain the
+# source of truth for exact, reproducible local/production installs.
+
+python-dotenv>=1.0.0
+pandas>=2.2.0
+datasets>=3.0.0
+accelerate>=1.0.0
+bitsandbytes>=0.44.0
+transformers>=4.46.0
+peft>=0.13.0
+trl>=0.11.0
+
+# Pinned to the same commits as pyproject.toml, for the same reproducibility
+# reason (see the comment there): unsloth doesn't tag PyPI-equivalent git
+# releases, so a floating branch would install different code on every run.
+git+https://github.com/unslothai/unsloth.git@fb9ea50c30e4b3f0f4819c767c204444858b272c
+git+https://github.com/unslothai/unsloth-zoo.git@e1d6791803ec67acc8f1c61a6c7ca665bdb0cefc

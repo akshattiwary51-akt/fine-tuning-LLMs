@@ -13,6 +13,7 @@ message list, used by both `app/data/dataset.py` (training) and
 `app/inference.py` (serving). If the instructions ever change, they change in
 one place for both.
 """
+
 from __future__ import annotations
 
 VALID_LABELS = [
@@ -69,9 +70,7 @@ def format_training_example(example: dict, tokenizer) -> dict:
 def build_generation_prompt(tokenizer, statement: str) -> str:
     """Builds the exact prompt string used to query the model at inference time."""
     messages = build_messages(statement)
-    return tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True
-    )
+    return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
 
 def normalize_label(raw_text: str) -> str:

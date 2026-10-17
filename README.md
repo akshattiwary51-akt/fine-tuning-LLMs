@@ -44,6 +44,7 @@ flowchart TD
     G --> K
     K --> L["Adapters saved to<br/>sft_output/&lt;run_name&gt;/adapters"]
     K --> M["run_metadata.json<br/>(config, dataset stats, package versions)"]
+    K --> M2["training_stats.json<br/>(param counts, GPU memory, samples/sec, tokens/sec)"]
 
     L --> N["app/inference.py<br/>generate_response()"]
     E --> N
@@ -121,6 +122,16 @@ This project follows a three-tier branching strategy with automated deployments:
 - [**Poetry**](https://github.com/python-poetry/poetry) for dependency management
 - **HuggingFace Account** with a valid [User Access Token](https://huggingface.co/settings/tokens)
 
+> **No NVIDIA GPU on your machine?** This project cannot run training/inference on
+> CPU or on integrated graphics (Intel Iris Xe, AMD integrated GPUs, Apple Silicon)
+> — `bitsandbytes` 4-bit quantization and Unsloth are CUDA-only. Skip straight to
+> **[docs/COLAB.md](docs/COLAB.md)** for a copy-paste Google Colab / Kaggle
+> Notebooks setup (both offer a free NVIDIA T4 GPU) instead of the Poetry
+> instructions below. Every entrypoint (`app/train.py`, `app/inference.py`) calls
+> `app.utils.environment.require_cuda()` first and will tell you immediately, with
+> an actionable message, if no CUDA GPU is available — rather than failing deep
+> inside a library with a cryptic error.
+
 ### Installation
 
 1. **Clone the repository**:
@@ -166,6 +177,8 @@ All configuration lives in `app/configs/settings.py` (a validated `Settings` dat
 poetry run python -m app.train
 poetry run python -m app.train --lora-mode lora --no-unsloth   # compare configurations
 poetry run python -m app.train --dataset-path /path/to/data.csv --max-steps 500 --seed 7
+poetry run python -m app.train --resume                        # resume from the latest local checkpoint
+poetry run python -m app.train --resume sft_output/.../checkpoint-600  # resume from an explicit checkpoint
 ```
 
 Each run writes to its own directory, `sft_output/<run_name>/`, where `run_name` encodes the model, LoRA mode, and backend (so switching modes never overwrites a previous run). It contains:
@@ -173,6 +186,9 @@ Each run writes to its own directory, `sft_output/<run_name>/`, where `run_name`
 - Tokenizer files (`adapters/`)
 - Checkpoints (per `save_steps`)
 - `run_metadata.json` — the effective settings, dataset class-distribution stats, and installed package versions for that run (see [Reproducibility](#-reproducibility))
+- `training_stats.json` — trainable/total parameter counts and percentage, peak GPU memory allocated/reserved, and the trainer's own runtime/throughput metrics (`train_runtime`, `train_samples_per_second`, `train_tokens_per_second`) — the actual measured numbers behind any efficiency claim, captured via PyTorch's CUDA memory API and `transformers.Trainer`'s built-in instrumentation rather than hand-estimated
+
+`--resume` only helps when the local checkpoint directory still exists (e.g. a training script that crashed for a non-environment reason, or a deliberate multi-session run on a persistent machine). It does **not** help after an ephemeral environment (Colab, Kaggle) wipes its filesystem — for that, see `AUTO_UPLOAD_TO_HUB` below, which protects against exactly that case by pushing checkpoints off-machine as training runs.
 
 ### Evaluation
 
@@ -197,6 +213,8 @@ poetry run python -m app.utils.upload
 
 Uploads `settings.adapter_dir` to `settings.hf_personal_repo_id` (derived from `HF_USERNAME`, or set `HF_PERSONAL_REPO_ID` explicitly). There is no hardcoded default namespace — the command fails with an actionable error if neither is set, rather than silently uploading to someone else's account.
 
+**Automatic upload during training** (`AUTO_UPLOAD_TO_HUB=true`): in an ephemeral environment like Colab or Kaggle, the local filesystem can be wiped by a disconnect with no warning, losing any unsaved training progress. Setting this env var (alongside `HF_TOKEN` + `HF_USERNAME`/`HF_PERSONAL_REPO_ID`) pushes adapters to Hub automatically at every checkpoint (`save_steps`) during training, not just once at the end — so a disconnect only costs progress since the last checkpoint, not the whole run. Off by default since it's a real side effect on your Hub account; upload failures are logged but never crash an otherwise-successful training run.
+
 <br>
 
 ## 📁 Project Structure
@@ -219,13 +237,17 @@ fine-tuning-llms/
 │   │   ├── download.py         # Download the base model from HF Hub
 │   │   ├── upload.py           # Upload trained adapters to HF Hub
 │   │   ├── logging_utils.py    # Structured logging setup
-│   │   └── seeding.py          # Reproducibility seeding (python/numpy/torch)
+│   │   ├── seeding.py          # Reproducibility seeding (python/numpy/torch)
+│   │   └── environment.py      # GPU detection with actionable errors (require_cuda)
 │   ├── train.py                # Training pipeline (CLI)
 │   └── inference.py            # Inference/evaluation pipeline (CLI)
 ├── tests/
 │   ├── conftest.py             # Shared fixtures (fake tokenizer, synthetic CSV)
 │   └── unit/                   # CPU-only tests: settings, dataset, prompts, metrics
+├── docs/
+│   └── COLAB.md                # Run on Google Colab / Kaggle (no local GPU needed)
 ├── .env.example                # Template for required environment variables
+├── requirements-colab.txt      # pip-installable deps for notebook environments
 ├── pyproject.toml              # Poetry dependencies
 ```
 
@@ -262,6 +284,20 @@ The unit test suite (52 tests) covers configuration validation, dataset cleaning
 - Lower `MAX_SEQ_LENGTH` (e.g., from 1024 to 512)
 - Use QLoRA instead of LoRA (`LORA_MODE=qlora`)
 
+### "Your setup doesn't support bf16/gpu. You need Ampere+ GPU"
+- This means your GPU is older than Ampere (e.g. a Tesla T4, as Colab's free
+  tier provides — Turing architecture, compute capability 7.5) and doesn't
+  support bfloat16 in hardware. `app/train.py` detects this automatically via
+  `app.utils.environment.supports_bf16()` and switches to fp16 — if you're
+  seeing this error, you're running against an older, un-patched version of
+  the code; update to the latest.
+
+### Training hangs at "wandb: Enter your choice:"
+- `SFTConfig` defaults to `report_to="none"` — training never prompts for an
+  experiment tracker. If you still see this prompt, you're on an outdated
+  copy of the code; update to the latest. To opt into Weights & Biases
+  deliberately, set `REPORT_TO=wandb` before running `app.train`.
+
 ### Slow Training
 - Enable `USE_UNSLOTH=true`
 - Verify CUDA is being used: `torch.cuda.is_available()`
@@ -288,7 +324,7 @@ The unit test suite (52 tests) covers configuration validation, dataset cleaning
 ## 🔭 Next Steps
 
 - A self-hosted-runner GPU workflow that trains a few steps as an end-to-end smoke test in CI.
-- An actual benchmark run (LoRA vs QLoRA vs Unsloth+QLoRA) with recorded VRAM/time/samples-per-second, to replace "Unsloth reports..." with this repo's own measured numbers.
+- An actual benchmark run (LoRA vs QLoRA vs Unsloth+QLoRA) using the `training_stats.json` each run already produces (VRAM, samples/sec, tokens/sec), to replace "Unsloth reports..." with this repo's own measured numbers — the capture mechanism exists, only the actual multi-run comparison is still outstanding.
 - Extending `app/data/dataset.py` to accept a small config describing which CSV columns to use, so another classification dataset can be plugged in without code changes.
 
 <br>

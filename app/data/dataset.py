@@ -8,6 +8,7 @@ proportionally rather than by chance. Splitting happens strictly before any
 prompt formatting or tokenization, so there is no leakage of train text into
 test formatting logic or vice versa.
 """
+
 from __future__ import annotations
 
 import logging
@@ -83,8 +84,7 @@ def load_and_clean(dataset_path: str) -> tuple[pd.DataFrame, DatasetStats]:
     missing_cols = [c for c in REQUIRED_COLUMNS if c not in df.columns]
     if missing_cols:
         raise ValueError(
-            f"Dataset is missing required column(s): {missing_cols}. "
-            f"Found columns: {list(df.columns)}"
+            f"Dataset is missing required column(s): {missing_cols}. Found columns: {list(df.columns)}"
         )
 
     if "Unnamed: 0" in df.columns:
@@ -174,7 +174,10 @@ def prepare_dataset(
 
     logger.info(
         "Split into %d train / %d test examples (test_size=%.2f, seed=%d, stratified by label).",
-        len(train_data), len(test_data), test_size, seed,
+        len(train_data),
+        len(test_data),
+        test_size,
+        seed,
     )
 
     return train_data, test_data, stats

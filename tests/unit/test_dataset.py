@@ -42,9 +42,7 @@ def test_load_and_clean_empty_dataset_path_raises():
 
 
 def test_prepare_dataset_splits_and_formats(synthetic_csv, fake_tokenizer):
-    train_data, test_data, stats = prepare_dataset(
-        synthetic_csv, fake_tokenizer, test_size=0.2, seed=42
-    )
+    train_data, test_data, stats = prepare_dataset(synthetic_csv, fake_tokenizer, test_size=0.2, seed=42)
     assert len(train_data) + len(test_data) == stats.total_rows
     assert train_data.column_names == ["text"]
     assert set(test_data.column_names) >= {"statement", "status", "text"}

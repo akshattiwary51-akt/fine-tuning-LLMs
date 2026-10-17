@@ -59,6 +59,14 @@ exclude = ["sft_output", "models", "unsloth_compiled_cache"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 
+[tool.ruff.lint.per-file-ignores]
+# `import unsloth` must be the first import in these two entrypoints, before
+# transformers/peft/trl (see the comment at the top of each file) — isort
+# would otherwise alphabetize it after those imports, which is exactly the
+# ordering Unsloth's own docs warn against.
+"app/train.py" = ["I001"]
+"app/inference.py" = ["I001"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [

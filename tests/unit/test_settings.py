@@ -96,3 +96,43 @@ def test_hf_personal_repo_id_explicit_override_wins():
         hf_personal_repo_id_override="explicit-namespace/explicit-repo",
     )
     assert settings.hf_personal_repo_id == "explicit-namespace/explicit-repo"
+
+
+def test_hf_token_env_var_takes_priority_over_colab(monkeypatch):
+    """If HF_TOKEN is set as a normal env var, the Colab secrets lookup should
+    never even be attempted."""
+    from app.configs.settings import _get_hf_token_from_env_or_colab
+
+    monkeypatch.setenv("HF_TOKEN", "env-token")
+    assert _get_hf_token_from_env_or_colab() == "env-token"
+
+
+def test_hf_token_falls_back_to_colab_secrets_when_env_unset(monkeypatch):
+    """When HF_TOKEN isn't set as an env var but a `google.colab` module is
+    importable (i.e. we're running in Colab), fall back to its secret manager."""
+    import sys
+    import types
+
+    from app.configs.settings import _get_hf_token_from_env_or_colab
+
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+
+    fake_google_colab = types.ModuleType("google.colab")
+    fake_userdata = types.ModuleType("google.colab.userdata")
+    fake_userdata.get = lambda key: "colab-secret-token" if key == "HF_TOKEN" else None
+    fake_google_colab.userdata = fake_userdata
+
+    monkeypatch.setitem(sys.modules, "google.colab", fake_google_colab)
+    monkeypatch.setitem(sys.modules, "google.colab.userdata", fake_userdata)
+
+    assert _get_hf_token_from_env_or_colab() == "colab-secret-token"
+
+
+def test_hf_token_returns_none_outside_colab_without_env_var(monkeypatch):
+    from app.configs.settings import _get_hf_token_from_env_or_colab
+
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    # No google.colab module available (the normal case outside a notebook) —
+    # the import inside the function will raise ImportError/ModuleNotFoundError
+    # and should be swallowed, returning None rather than propagating.
+    assert _get_hf_token_from_env_or_colab() is None
